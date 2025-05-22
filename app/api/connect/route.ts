@@ -218,6 +218,22 @@ export async function GET(request: NextRequest) {
           font-size: 12px;
         }
         
+        #debug-info {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          background: rgba(0,0,0,0.7);
+          color: white;
+          padding: 10px;
+          font-size: 10px;
+          z-index: 100;
+          border-radius: 5px;
+          max-width: 80%;
+          max-height: 80%;
+          overflow: auto;
+          display: none;
+        }
+        
         /* 小さい画面用の調整 */
         @media (max-height: 500px) {
           #control-panel {
@@ -267,10 +283,12 @@ export async function GET(request: NextRequest) {
         
         <div id="control-panel">
           <button id="reconnect-btn" class="btn">再接続</button>
+          <button id="debug-btn" class="btn">詳細情報</button>
         </div>
         
         <div id="status-bar">接続中...</div>
         <div id="performance-stats"></div>
+        <div id="debug-info"></div>
       </div>
 
       <script>
@@ -283,6 +301,7 @@ export async function GET(request: NextRequest) {
         const remoteImage = document.getElementById('remote-image');
         const statusBar = document.getElementById('status-bar');
         const reconnectBtn = document.getElementById('reconnect-btn');
+        const debugBtn = document.getElementById('debug-btn');
         const switchCameraBtn = document.getElementById('switch-camera-btn');
         const torchBtn = document.getElementById('torch-btn');
         const cameraInfo = document.getElementById('camera-info');
@@ -290,15 +309,53 @@ export async function GET(request: NextRequest) {
         const connectionIndicator = document.getElementById('connection-indicator');
         const performanceStats = document.getElementById('performance-stats');
         const qualitySelect = document.getElementById('quality-select');
+        const debugInfo = document.getElementById('debug-info');
+        
+        // デバッグログ配列
+        let debugLogs = [];
+        const MAX_DEBUG_LOGS = 100;
         
         // 再接続ボタン
         reconnectBtn.addEventListener('click', () => {
           location.reload();
         });
         
+        // デバッグボタン
+        debugBtn.addEventListener('click', () => {
+          if (debugInfo.style.display === 'block') {
+            debugInfo.style.display = 'none';
+            debugBtn.textContent = '詳細情報';
+          } else {
+            debugInfo.style.display = 'block';
+            debugBtn.textContent = '情報を隠す';
+            updateDebugInfo();
+          }
+        });
+        
         // ログ関数
         function log(message) {
           console.log(message);
+          
+          // デバッグログに追加
+          const timestamp = new Date().toLocaleTimeString();
+          debugLogs.push(\`[\${timestamp}] \${message}\`);
+          
+          // 最大数を超えたら古いログを削除
+          if (debugLogs.length > MAX_DEBUG_LOGS) {
+            debugLogs.shift();
+          }
+          
+          // デバッグ情報を更新
+          if (debugInfo.style.display === 'block') {
+            updateDebugInfo();
+          }
+        }
+        
+        // デバッグ情報を更新
+        function updateDebugInfo() {
+          debugInfo.innerHTML = debugLogs.join('<br>');
+          // 自動スクロール
+          debugInfo.scrollTop = debugInfo.scrollHeight;
         }
 
         // 基本設定
@@ -325,6 +382,32 @@ export async function GET(request: NextRequest) {
         let connectionRetries = 0;
         let maxConnectionRetries = 10;
         let connectionRetryDelay = 2000; // 2秒
+        let currentPeerServer = 0; // 現在使用中のPeerJSサーバーインデックス
+        
+        // PeerJSサーバーのリスト（フォールバック用）
+        const peerServers = [
+          { // デフォルトのPeerJSサーバー
+            host: '0.peerjs.com',
+            secure: true,
+            port: 443,
+            path: '/',
+            key: 'peerjs'
+          },
+          { // バックアップサーバー1
+            host: 'peerjs.herokuapp.com',
+            secure: true,
+            port: 443,
+            path: '/',
+            key: 'peerjs'
+          },
+          { // バックアップサーバー2 - カスタムサーバー
+            host: 'peerjs-server.onrender.com',
+            secure: true,
+            port: 443,
+            path: '/',
+            key: 'peerjs'
+          }
+        ];
         
         // 品質設定の変更イベント
         qualitySelect.addEventListener('change', () => {
@@ -640,16 +723,39 @@ export async function GET(request: NextRequest) {
           }
         }
         
+        // 次のPeerJSサーバーに切り替え
+        function switchToNextPeerServer() {
+          currentPeerServer = (currentPeerServer + 1) % peerServers.length;
+          log(\`PeerJSサーバーを切り替え: \${peerServers[currentPeerServer].host}\`);
+          return peerServers[currentPeerServer];
+        }
+        
         // PeerJS接続を開始
         function startConnection() {
+          // 既存の接続を閉じる
+          if (peer) {
+            try {
+              peer.destroy();
+            } catch (e) {
+              log('既存のピア接続を閉じる際にエラー: ' + e);
+            }
+          }
+          
           // ピアIDの設定
           const peerId = mode === 'camera' ? 'camera-' + roomId : 'viewer-' + roomId;
           
-          log('PeerJS初期化: ' + peerId);
+          // 現在のサーバー設定を取得
+          const serverConfig = peerServers[currentPeerServer];
+          log(\`PeerJS初期化: \${peerId} (サーバー: \${serverConfig.host})\`);
           
           // PeerJSの設定
           const peerConfig = {
             debug: 2,
+            host: serverConfig.host,
+            secure: serverConfig.secure,
+            port: serverConfig.port,
+            path: serverConfig.path,
+            key: serverConfig.key,
             config: {
               'iceServers': [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -662,11 +768,7 @@ export async function GET(request: NextRequest) {
                 { urls: 'stun:stun.ideasip.com:3478' },
                 { urls: 'stun:stun.voiparound.com:3478' }
               ]
-            },
-            secure: true, // SSL接続を使用
-            host: 'peerjs-server.onrender.com', // カスタムPeerJSサーバー
-            port: 443, // HTTPSポート
-            path: '/' // パス
+            }
           };
           
           // PeerJSインスタンスの作成
@@ -698,6 +800,16 @@ export async function GET(request: NextRequest) {
                 const randomId = Math.random().toString(36).substring(2, 8);
                 const newPeerId = mode === 'camera' ? 'camera-' + randomId : 'viewer-' + randomId;
                 log('新しいIDで再試行: ' + newPeerId);
+                
+                // 既存のピアを破棄して新しいピアを作成
+                if (peer) {
+                  try {
+                    peer.destroy();
+                  } catch (e) {
+                    log('ピア破棄エラー: ' + e);
+                  }
+                }
+                
                 peer = new Peer(newPeerId, peerConfig);
               } else if (err.type === 'peer-unavailable') {
                 // ピアが見つからない場合は再接続を提案
@@ -713,12 +825,17 @@ export async function GET(request: NextRequest) {
                     }
                   }, connectionRetryDelay);
                 }
-              } else if (err.type === 'network' || err.type === 'disconnected') {
-                // ネットワークエラーの場合は再接続
-                log('ネットワークエラー - 再接続を試みます');
+              } else if (err.type === 'network' || err.type === 'disconnected' || err.type === 'server-error') {
+                // ネットワークエラーまたはサーバーエラーの場合は別のサーバーに切り替え
+                log('ネットワークまたはサーバーエラー - 別のサーバーに切り替えます');
+                
+                // 次のサーバーに切り替え
+                switchToNextPeerServer();
+                
+                // 少し待ってから再接続
                 setTimeout(() => {
                   startConnection();
-                }, 3000);
+                }, 2000);
               }
             });
             
@@ -727,14 +844,14 @@ export async function GET(request: NextRequest) {
               log('ピアサーバーから切断されました');
               updateStatus('サーバーから切断されました - 再接続中...');
               
-              // 自動再接続
+              // 自動再接続を試みる
               setTimeout(() => {
-                if (peer) {
-                  peer.reconnect();
-                } else {
-                  startConnection();
-                }
-              }, 3000);
+                // 次のサーバーに切り替え
+                switchToNextPeerServer();
+                
+                // 再接続
+                startConnection();
+              }, 2000);
             });
             
             // カメラモードの場合のデータ接続処理
@@ -787,11 +904,21 @@ export async function GET(request: NextRequest) {
                   updateStatus('視聴者との接続が終了しました');
                   stopFrameSending();
                 });
+                
+                conn.on('error', err => {
+                  log('データ接続エラー: ' + err);
+                });
               });
             }
           } catch (err) {
             log('PeerJS初期化エラー: ' + err);
             updateStatus('接続初期化エラー: ' + err);
+            
+            // 次のサーバーに切り替えて再試行
+            setTimeout(() => {
+              switchToNextPeerServer();
+              startConnection();
+            }, 2000);
           }
         }
         
@@ -911,6 +1038,12 @@ export async function GET(request: NextRequest) {
           } catch (err) {
             log('接続エラー: ' + err);
             updateStatus('接続エラー: ' + err);
+            
+            // 次のサーバーに切り替えて再試行
+            setTimeout(() => {
+              switchToNextPeerServer();
+              startConnection();
+            }, 2000);
           }
         }
         
