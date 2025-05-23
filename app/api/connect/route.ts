@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     <head>
       <title>リモートカメラ接続</title>
       <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="viewport" content="width=device-width, initial-scale: 1.0">
       <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
       <style>
         * {
@@ -276,8 +276,9 @@ export async function GET(request: NextRequest) {
         <div id="quality-controls" class="${mode === "camera" ? "" : "hidden"}">
           <select id="quality-select">
             <option value="high">高画質 (低FPS)</option>
-            <option value="medium" selected>標準 (中FPS)</option>
-            <option value="low">低画質 (高FPS)</option>
+            <option value="medium">標準 (中FPS)</option>
+            <option value="low" selected>低画質 (高FPS)</option>
+            <option value="ultralow">超低画質 (最高FPS)</option>
           </select>
         </div>
         
@@ -416,18 +417,23 @@ export async function GET(request: NextRequest) {
           switch(quality) {
             case 'high':
               frameInterval = 200; // 5fps
-              imageQuality = 0.9;
+              imageQuality = 0.8; // 0.9から0.8に圧縮率向上
               imageResolution = { width: 1280, height: 720 };
               break;
             case 'medium':
               frameInterval = 100; // 10fps
-              imageQuality = 0.7;
+              imageQuality = 0.6; // 0.7から0.6に圧縮率向上
               imageResolution = { width: 640, height: 480 };
               break;
             case 'low':
-              frameInterval = 50; // 20fps
-              imageQuality = 0.5;
-              imageResolution = { width: 480, height: 360 };
+              frameInterval = 40; // 25fps (50msから40msに変更)
+              imageQuality = 0.4; // 0.5から0.4に圧縮率向上
+              imageResolution = { width: 320, height: 240 }; // 480x360から320x240に解像度削減
+              break;
+            case 'ultralow': // 超低画質モードを追加
+              frameInterval = 30; // 約33fps
+              imageQuality = 0.3; // 非常に高い圧縮率
+              imageResolution = { width: 240, height: 180 }; // さらに低い解像度
               break;
           }
           

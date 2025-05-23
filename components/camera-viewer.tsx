@@ -41,7 +41,7 @@ export default function CameraViewer({
 }: CameraViewerProps) {
   // 各カメラ接続の状態
   const [connectionStatus, setConnectionStatus] = useState("未接続")
-  const [quality, setQuality] = useState("medium")
+  const [quality, setQuality] = useState("low") // デフォルトを"medium"から"low"に変更
   const [showPeopleCounter, setShowPeopleCounter] = useState(false)
   const [peopleCount, setPeopleCount] = useState({ leftToRight: 0, rightToLeft: 0, total: 0 })
   const [imageReceived, setImageReceived] = useState(false)
@@ -372,6 +372,7 @@ export default function CameraViewer({
                 <SelectItem value="high">高画質 (低FPS)</SelectItem>
                 <SelectItem value="medium">標準 (中FPS)</SelectItem>
                 <SelectItem value="low">低画質 (高FPS)</SelectItem>
+                <SelectItem value="ultralow">超低画質 (最高FPS)</SelectItem>
               </SelectContent>
             </Select>
           </div>

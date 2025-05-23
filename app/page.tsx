@@ -23,6 +23,7 @@ export default function Home() {
   const [debugMode, setDebugMode] = useState(false)
   const [scriptsLoaded, setScriptsLoaded] = useState(false)
   const [isLoadingScripts, setIsLoadingScripts] = useState(false)
+  const [quality, setQuality] = useState("low") // デフォルトを"medium"から"low"に変更
 
   // 複数カメラ接続を管理するための状態（シンプルな配列）
   const [cameras, setCameras] = useState<CameraInfo[]>([])
