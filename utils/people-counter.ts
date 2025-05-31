@@ -15,24 +15,27 @@ export class PeopleCounter {
       lastSeen: number
       confidence: number
       crossingConfidence: number
+      hasEnteredLeftSide: boolean // 左側エリアに入ったか
+      hasEnteredRightSide: boolean // 右側エリアに入ったか
+      lastSide: string | null // 最後にいた側（"left" | "right" | null）
     }
   > = new Map()
   private peopleCount = { leftToRight: 0, rightToLeft: 0, total: 0 }
   private lastDetectionTime = 0
-  private detectionInterval = 50 // 検出間隔を短縮（100ms→50ms）
-  private cleanupInterval = 3000 // 追跡データのクリーンアップ間隔を延長
+  private detectionInterval = 30 // 検出間隔をさらに短縮（50ms→30ms）
+  private cleanupInterval = 2000 // クリーンアップ間隔を短縮（3000ms→2000ms）
   private onCountUpdate: ((count: { leftToRight: number; rightToLeft: number; total: number }) => void) | null = null
   private debugMode = false
   private canvasWidth = 0
   private canvasHeight = 0
-  private analysisCanvas: HTMLCanvasElement | null = null // 分析表示用のキャンバス
-  private modelLoadPromise: Promise<any> | null = null // モデル読み込みのPromise
-  private frameCount = 0 // 処理したフレーム数
-  private minTrackingConfidence = 0.25 // 追跡を維持するための最小信頼度を下げる（0.4→0.3）
-  private minCrossingConfidence = 0.2 // 横断をカウントするための最小信頼度を下げる（0.4→0.3）
-  private positionHistoryLimit = 20 // 位置履歴の最大数を増やす（15→20）
-  private crossingThreshold = 0.05 // 横断判定のための移動距離閾値を下げる（0.1→0.05）
-  private lastCountUpdateTime = 0 // 最後にカウントを更新した時間
+  private analysisCanvas: HTMLCanvasElement | null = null
+  private modelLoadPromise: Promise<any> | null = null
+  private frameCount = 0
+  private minTrackingConfidence = 0.15 // 追跡信頼度をさらに下げる（0.25→0.15）
+  private minCrossingConfidence = 0.1 // 横断信頼度をさらに下げる（0.2→0.1）
+  private positionHistoryLimit = 30 // 位置履歴を増やす（20→30）
+  private crossingThreshold = 0.02 // 移動距離閾値をさらに下げる（0.05→0.02）
+  private lastCountUpdateTime = 0
 
   constructor() {
     // クリーンアップタイマーの設定
@@ -93,6 +96,7 @@ export class PeopleCounter {
   // カウント更新時のコールバック設定
   setCountUpdateCallback(callback: (count: { leftToRight: number; rightToLeft: number; total: number }) => void) {
     this.onCountUpdate = callback
+    console.log("カウント更新コールバックが設定されました")
   }
 
   // デバッグモードの設定
@@ -200,7 +204,7 @@ export class PeopleCounter {
 
     // 背景を描画
     ctx.fillStyle = "rgba(0, 0, 0, 0.7)"
-    ctx.fillRect(0, 0, 250, 120)
+    ctx.fillRect(0, 0, 300, 140)
 
     // 検出情報
     ctx.fillStyle = "white"
@@ -210,32 +214,29 @@ export class PeopleCounter {
     ctx.fillText(`検出人物: ${personCount}人`, 10, 60)
     ctx.fillText(`追跡人物: ${this.trackedPeople.size}人`, 10, 80)
     ctx.fillText(`カウント - 左→右: ${this.peopleCount.leftToRight}, 右→左: ${this.peopleCount.rightToLeft}`, 10, 100)
+    ctx.fillText(`画面サイズ: ${this.canvasWidth}x${this.canvasHeight}`, 10, 120)
 
-    // 横断ライン情報
-    const lineMidX = (this.crossingLine.x1 + this.crossingLine.x2) / 2
-    const lineMidY = (this.crossingLine.y1 + this.crossingLine.y2) / 2
-
-    // ライン方向の矢印を描画
+    // 左右エリアの境界を表示
+    const centerX = this.canvasWidth / 2
     ctx.beginPath()
-    ctx.moveTo(lineMidX - 20, lineMidY - 20)
-    ctx.lineTo(lineMidX, lineMidY)
-    ctx.lineTo(lineMidX - 20, lineMidY + 20)
-    ctx.strokeStyle = "rgba(255, 255, 0, 0.8)"
+    ctx.moveTo(centerX, 0)
+    ctx.lineTo(centerX, this.canvasHeight)
+    ctx.strokeStyle = "rgba(255, 255, 0, 0.5)"
     ctx.lineWidth = 2
+    ctx.setLineDash([10, 5])
     ctx.stroke()
+    ctx.setLineDash([])
 
-    ctx.beginPath()
-    ctx.moveTo(lineMidX + 20, lineMidY - 20)
-    ctx.lineTo(lineMidX, lineMidY)
-    ctx.lineTo(lineMidX + 20, lineMidY + 20)
-    ctx.strokeStyle = "rgba(255, 255, 0, 0.8)"
-    ctx.lineWidth = 2
-    ctx.stroke()
+    // エリア表示
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)"
+    ctx.font = "16px Arial"
+    ctx.fillText("左エリア", 10, this.canvasHeight - 20)
+    ctx.fillText("右エリア", centerX + 10, this.canvasHeight - 20)
   }
 
   // 横断ラインの描画
   private drawCrossingLine(ctx: CanvasRenderingContext2D) {
-    // メインライン
+    // メインライン（表示用）
     ctx.beginPath()
     ctx.moveTo(this.crossingLine.x1, this.crossingLine.y1)
     ctx.lineTo(this.crossingLine.x2, this.crossingLine.y2)
@@ -343,11 +344,13 @@ export class PeopleCounter {
 
         currentIds.add(closestId)
 
-        // 横断ラインとの交差チェック
-        this.checkLineCrossing(trackedPerson, centerX, centerY, lastPosition, ctx)
+        // 簡易横断チェック（新しいロジック）
+        this.checkScreenCrossing(trackedPerson, centerX, centerY, lastPosition, ctx)
       } else {
         // 新しい人物を追加
         const newId = `person_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        const currentSide = this.getCurrentSide(centerX)
+
         this.trackedPeople.set(newId, {
           id: newId,
           box: person.bbox,
@@ -358,6 +361,9 @@ export class PeopleCounter {
           lastSeen: now,
           confidence: person.score,
           crossingConfidence: 0,
+          hasEnteredLeftSide: currentSide === "left",
+          hasEnteredRightSide: currentSide === "right",
+          lastSide: currentSide,
         })
         currentIds.add(newId)
       }
@@ -376,8 +382,8 @@ export class PeopleCounter {
     for (const [id, person] of this.trackedPeople.entries()) {
       if (!currentIds.has(id)) {
         // このフレームで検出されなかった人物
-        if (now - person.lastSeen < 2000) {
-          // 2秒以内に消失した人物のみ表示
+        if (now - person.lastSeen < 1500) {
+          // 1.5秒以内に消失した人物のみ表示
           this.drawDisappearedPerson(ctx, person)
         }
       }
@@ -388,9 +394,107 @@ export class PeopleCounter {
       }
     }
 
-    // カウント情報を更新 - 頻度を制限せずに毎回更新
+    // カウント情報を毎フレーム更新（デバッグ用）
     if (this.onCountUpdate) {
-      this.onCountUpdate(this.peopleCount)
+      this.onCountUpdate({
+        leftToRight: this.peopleCount.leftToRight,
+        rightToLeft: this.peopleCount.rightToLeft,
+        total: this.peopleCount.total,
+      })
+    }
+  }
+
+  // 現在の位置がどちら側かを判定
+  private getCurrentSide(centerX: number): string | null {
+    const screenCenter = this.canvasWidth / 2
+    const margin = this.canvasWidth * 0.1 // 10%のマージン
+
+    if (centerX < screenCenter - margin) {
+      return "left"
+    } else if (centerX > screenCenter + margin) {
+      return "right"
+    }
+    return null // 中央エリア
+  }
+
+  // 画面横断チェック（新しい簡易ロジック）
+  private checkScreenCrossing(
+    person: {
+      id: string
+      box: any
+      crossed: boolean
+      direction: string | null
+      lastPosition: { x: number; y: number }
+      positions: Array<{ x: number; y: number; timestamp: number }>
+      lastSeen: number
+      confidence: number
+      crossingConfidence: number
+      hasEnteredLeftSide: boolean
+      hasEnteredRightSide: boolean
+      lastSide: string | null
+    },
+    centerX: number,
+    centerY: number,
+    lastPosition: { x: number; y: number },
+    ctx: CanvasRenderingContext2D,
+  ) {
+    // すでに横断済みの場合は処理しない
+    if (person.crossed) return
+
+    // 現在の位置がどちら側かを判定
+    const currentSide = this.getCurrentSide(centerX)
+
+    // 側が変わった場合の処理
+    if (currentSide && currentSide !== person.lastSide) {
+      console.log(`人物 ${person.id.substring(0, 6)} が ${person.lastSide} から ${currentSide} に移動`)
+
+      // 側の記録を更新
+      if (currentSide === "left") {
+        person.hasEnteredLeftSide = true
+      } else if (currentSide === "right") {
+        person.hasEnteredRightSide = true
+      }
+
+      person.lastSide = currentSide
+
+      // 両側を経験した場合はカウント
+      if (person.hasEnteredLeftSide && person.hasEnteredRightSide && !person.crossed) {
+        person.crossed = true
+
+        // 最後の移動方向でカウント方向を決定
+        const direction = centerX > lastPosition.x ? "right" : "left"
+        person.direction = direction
+
+        if (direction === "right") {
+          this.peopleCount.leftToRight++
+          console.log(`左→右カウント: ${this.peopleCount.leftToRight}`)
+        } else {
+          this.peopleCount.rightToLeft++
+          console.log(`右→左カウント: ${this.peopleCount.rightToLeft}`)
+        }
+
+        this.peopleCount.total = this.peopleCount.leftToRight + this.peopleCount.rightToLeft
+
+        // 横断軌跡を描画
+        this.drawCrossingTrajectory(ctx, person, direction)
+
+        // カウント更新を強制的に通知（即座に実行）
+        console.log(
+          `カウント更新通知: 左→右=${this.peopleCount.leftToRight}, 右→左=${this.peopleCount.rightToLeft}, 合計=${this.peopleCount.total}`,
+        )
+        if (this.onCountUpdate) {
+          this.onCountUpdate({
+            leftToRight: this.peopleCount.leftToRight,
+            rightToLeft: this.peopleCount.rightToLeft,
+            total: this.peopleCount.total,
+          })
+        }
+      }
+    }
+
+    // 移動軌跡を描画
+    if (currentSide) {
+      this.drawMovementPath(ctx, lastPosition, centerX, centerY)
     }
   }
 
@@ -429,13 +533,18 @@ export class PeopleCounter {
     const trackedPerson = id ? this.trackedPeople.get(id) : null
     const hasCrossed = trackedPerson?.crossed || false
     const direction = trackedPerson?.direction || null
+    const currentSide = this.getCurrentSide(centerX)
 
     // バウンディングボックスを描画（横断済みかどうかで色を変える）
     ctx.strokeStyle = hasCrossed
       ? direction === "right"
         ? "rgba(0, 255, 0, 0.8)"
         : "rgba(255, 165, 0, 0.8)"
-      : "rgba(0, 255, 255, 0.8)"
+      : currentSide === "left"
+        ? "rgba(0, 255, 255, 0.8)"
+        : currentSide === "right"
+          ? "rgba(255, 0, 255, 0.8)"
+          : "rgba(128, 128, 128, 0.8)"
     ctx.lineWidth = 2
     ctx.strokeRect(x, y, width, height)
 
@@ -444,7 +553,11 @@ export class PeopleCounter {
       ? direction === "right"
         ? "rgba(0, 255, 0, 0.8)"
         : "rgba(255, 165, 0, 0.8)"
-      : "rgba(0, 255, 255, 0.8)"
+      : currentSide === "left"
+        ? "rgba(0, 255, 255, 0.8)"
+        : currentSide === "right"
+          ? "rgba(255, 0, 255, 0.8)"
+          : "rgba(128, 128, 128, 0.8)"
     ctx.beginPath()
     ctx.arc(centerX, centerY, 4, 0, Math.PI * 2)
     ctx.fill()
@@ -458,16 +571,25 @@ export class PeopleCounter {
     const displayId = id ? id.substring(0, 6) : "新規"
     ctx.fillText(`ID: ${displayId}`, x, y - 20)
 
+    // 現在の側を表示
+    if (currentSide) {
+      ctx.fillText(`側: ${currentSide}`, x, y - 35)
+    }
+
     // 横断情報を表示
     if (hasCrossed) {
       ctx.fillStyle = direction === "right" ? "rgba(0, 255, 0, 0.8)" : "rgba(255, 165, 0, 0.8)"
       ctx.fillText(`${direction === "right" ? "→" : "←"}`, x + width - 15, y - 5)
     }
 
-    // 横断信頼度を表示（デバッグモードのみ）
+    // エリア経験状況を表示（デバッグモードのみ）
     if (this.debugMode && trackedPerson) {
       ctx.fillStyle = "yellow"
-      ctx.fillText(`横断信頼度: ${Math.round(trackedPerson.crossingConfidence * 100)}%`, x, y + height + 15)
+      ctx.fillText(
+        `L:${trackedPerson.hasEnteredLeftSide ? "○" : "×"} R:${trackedPerson.hasEnteredRightSide ? "○" : "×"}`,
+        x,
+        y + height + 15,
+      )
     }
   }
 
@@ -484,13 +606,16 @@ export class PeopleCounter {
       lastSeen: number
       confidence: number
       crossingConfidence: number
+      hasEnteredLeftSide: boolean
+      hasEnteredRightSide: boolean
+      lastSide: string | null
     },
   ) {
     const [x, y, width, height] = person.box
     const centerX = person.lastPosition.x
     const centerY = person.lastPosition.y
     const timeSinceLastSeen = Date.now() - person.lastSeen
-    const opacity = Math.max(0, 1 - timeSinceLastSeen / 2000) // 2秒かけて徐々に透明に
+    const opacity = Math.max(0, 1 - timeSinceLastSeen / 1500) // 1.5秒かけて徐々に透明に
 
     // 消失した人物を薄く表示
     ctx.strokeStyle = `rgba(255, 0, 0, ${opacity * 0.7})`
@@ -530,11 +655,11 @@ export class PeopleCounter {
       const timeFactor = Math.min(1, (Date.now() - person.lastSeen) / 1000)
 
       // 総合スコア（距離、サイズ、時間を考慮）
-      const score = distance * (1 + sizeSimilarity * 0.5) * (1 + timeFactor * 0.5) // 重み付けを調整
+      const score = distance * (1 + sizeSimilarity * 0.3) * (1 + timeFactor * 0.3) // 重み付けを軽減
 
       // スコアが閾値以下で最小の場合、この人物を選択
       // 閾値を大きくして、より広い範囲で一致を検索
-      const threshold = Math.max(width, height) * 1.2 // 0.8から1.0に増加
+      const threshold = Math.max(width, height) * 1.5 // 1.2から1.5に増加
       if (distance < threshold && score < minDistance) {
         minDistance = score
         closestId = id
@@ -542,79 +667,6 @@ export class PeopleCounter {
     }
 
     return closestId
-  }
-
-  // 横断ラインとの交差チェック - 改善版
-  private checkLineCrossing(
-    person: {
-      id: string
-      box: any
-      crossed: boolean
-      direction: string | null
-      lastPosition: { x: number; y: number }
-      positions: Array<{ x: number; y: number; timestamp: number }>
-      lastSeen: number
-      confidence: number
-      crossingConfidence: number
-    },
-    centerX: number,
-    centerY: number,
-    lastPosition: { x: number; y: number },
-    ctx: CanvasRenderingContext2D,
-  ) {
-    // すでに横断済みの場合は処理しない
-    if (person.crossed) return
-
-    // 移動距離が小さすぎる場合は処理しない（ノイズ防止）- 閾値をさらに下げる
-    const moveDistance = Math.sqrt(Math.pow(centerX - lastPosition.x, 2) + Math.pow(centerY - lastPosition.y, 2))
-    if (moveDistance < this.canvasWidth * 0.001) return // 0.003から0.002に下げる
-
-    // 前回の位置と現在の位置の間でラインを横切ったかチェック
-    const crossed = this.lineSegmentIntersection(
-      lastPosition.x,
-      lastPosition.y,
-      centerX,
-      centerY,
-      this.crossingLine.x1,
-      this.crossingLine.y1,
-      this.crossingLine.x2,
-      this.crossingLine.y2,
-    )
-
-    // 横断信頼度を更新
-    if (crossed) {
-      // 横断方向の判定
-      const direction = this.determineDirection(centerX, lastPosition.x)
-
-      // 横断信頼度を増加 - より大きく増加
-      person.crossingConfidence += 0.8 // 0.6から0.7に増加
-      person.crossingConfidence = Math.min(person.crossingConfidence, 1.0)
-
-      // 信頼度が閾値を超えたらカウント
-      if (person.crossingConfidence >= this.minCrossingConfidence && !person.crossed) {
-        person.crossed = true
-        person.direction = direction
-
-        if (direction === "right") {
-          this.peopleCount.leftToRight++
-        } else {
-          this.peopleCount.rightToLeft++
-        }
-
-        this.peopleCount.total = this.peopleCount.leftToRight + this.peopleCount.rightToLeft
-
-        // 横断軌跡を描画
-        this.drawCrossingTrajectory(ctx, person, direction)
-
-        // カウント更新をすぐに通知
-        if (this.onCountUpdate) {
-          this.onCountUpdate(this.peopleCount)
-        }
-      }
-    } else {
-      // 移動軌跡を描画
-      this.drawMovementPath(ctx, lastPosition, centerX, centerY)
-    }
   }
 
   // 横断時の軌跡を描画
@@ -630,45 +682,29 @@ export class PeopleCounter {
     }
 
     ctx.strokeStyle = direction === "right" ? "rgba(0, 255, 0, 0.8)" : "rgba(255, 165, 0, 0.8)"
-    ctx.lineWidth = 3
+    ctx.lineWidth = 4
     ctx.stroke()
 
-    // 交差点を強調表示
-    for (let i = 1; i < person.positions.length; i++) {
-      const intersection = this.getIntersectionPoint(
-        person.positions[i - 1].x,
-        person.positions[i - 1].y,
-        person.positions[i].x,
-        person.positions[i].y,
-        this.crossingLine.x1,
-        this.crossingLine.y1,
-        this.crossingLine.x2,
-        this.crossingLine.y2,
-      )
+    // 最終位置に大きな点を描画
+    const lastPos = person.positions[person.positions.length - 1]
+    ctx.fillStyle = "yellow"
+    ctx.beginPath()
+    ctx.arc(lastPos.x, lastPos.y, 8, 0, Math.PI * 2)
+    ctx.fill()
 
-      if (intersection) {
-        ctx.fillStyle = "yellow"
-        ctx.beginPath()
-        ctx.arc(intersection.x, intersection.y, 6, 0, Math.PI * 2)
-        ctx.fill()
+    // 方向矢印を描画
+    const arrowLength = 30
+    const arrowX = direction === "right" ? lastPos.x + arrowLength : lastPos.x - arrowLength
+    this.drawArrow(ctx, lastPos.x, lastPos.y, arrowX, lastPos.y, "yellow")
 
-        // 方向矢印を描画
-        const arrowLength = 20
-        const arrowX = direction === "right" ? intersection.x + arrowLength : intersection.x - arrowLength
-        this.drawArrow(ctx, intersection.x, intersection.y, arrowX, intersection.y, "yellow")
-
-        // カウント表示
-        ctx.fillStyle = "white"
-        ctx.font = "14px Arial"
-        ctx.fillText(
-          direction === "right" ? `→ ${this.peopleCount.leftToRight}` : `← ${this.peopleCount.rightToLeft}`,
-          intersection.x + (direction === "right" ? 10 : -40),
-          intersection.y - 10,
-        )
-
-        break
-      }
-    }
+    // カウント表示
+    ctx.fillStyle = "white"
+    ctx.font = "16px Arial"
+    ctx.fillText(
+      direction === "right" ? `→ ${this.peopleCount.leftToRight}` : `← ${this.peopleCount.rightToLeft}`,
+      lastPos.x + (direction === "right" ? 10 : -60),
+      lastPos.y - 15,
+    )
   }
 
   // 移動軌跡を描画
@@ -678,9 +714,9 @@ export class PeopleCounter {
     centerX: number,
     centerY: number,
   ) {
-    // 移動距離が小さすぎる場合は描画しない - 閾値を下げる
+    // 移動距離が小さすぎる場合は描画しない
     const moveDistance = Math.sqrt(Math.pow(centerX - lastPosition.x, 2) + Math.pow(centerY - lastPosition.y, 2))
-    if (moveDistance < this.canvasWidth * 0.005) return // 0.01から0.005に下げる
+    if (moveDistance < this.canvasWidth * 0.003) return // 閾値を緩和
 
     ctx.beginPath()
     ctx.moveTo(lastPosition.x, lastPosition.y)
@@ -690,96 +726,15 @@ export class PeopleCounter {
     ctx.stroke()
   }
 
-  // 2つの線分の交差判定 - 改善版
-  private lineSegmentIntersection(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    x3: number,
-    y3: number,
-    x4: number,
-    y4: number,
-  ): boolean {
-    // 線分1: (x1, y1) - (x2, y2)
-    // 線分2: (x3, y3) - (x4, y4)
-
-    // 線分の方向ベクトル
-    const dx1 = x2 - x1
-    const dy1 = y2 - y1
-    const dx2 = x4 - x3
-    const dy2 = y4 - y3
-
-    // 交差判定の行列式
-    const denominator = dy2 * dx1 - dx2 * dy1
-
-    // 平行な場合は交差しない
-    if (Math.abs(denominator) < 1e-10) return false
-
-    // パラメータt, u
-    const t = ((x3 - x1) * dy2 - (y3 - y1) * dx2) / denominator
-    const u = ((x3 - x1) * dy1 - (y3 - y1) * dx1) / denominator
-
-    // 線分の範囲内で交差するかチェック - 少し余裕を持たせる
-    return t >= -0.15 && t <= 1.15 && u >= -0.15 && u <= 1.15 // 0から-0.05、1から1.05に拡大
-  }
-
-  // 交差点の座標を取得
-  private getIntersectionPoint(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    x3: number,
-    y3: number,
-    x4: number,
-    y4: number,
-  ): { x: number; y: number } | null {
-    // 線分1: (x1, y1) - (x2, y2)
-    // 線分2: (x3, y3) - (x4, y4)
-
-    // 線分の方向ベクトル
-    const dx1 = x2 - x1
-    const dy1 = y2 - y1
-    const dx2 = x4 - x3
-    const dy2 = y4 - y3
-
-    // 交差判定の行列式
-    const denominator = dy2 * dx1 - dx2 * dy1
-
-    // 平行な場合は交差しない
-    if (Math.abs(denominator) < 1e-10) return null
-
-    // パラメータt, u
-    const t = ((x3 - x1) * dy2 - (y3 - y1) * dx2) / denominator
-    const u = ((x3 - x1) * dy1 - (y3 - y1) * dx1) / denominator
-
-    // 線分の範囲内で交差するかチェック - 少し余裕を持たせる
-    if (t >= -0.1 && t <= 1.1 && u >= -0.1 && u <= 1.1) {
-      return {
-        x: x1 + t * dx1,
-        y: y1 + t * dy1,
-      }
-    }
-
-    return null
-  }
-
-  // 横断方向の判定
-  private determineDirection(currentX: number, lastX: number) {
-    // 移動方向で左右を判定
-    return currentX > lastX ? "right" : "left"
-  }
-
   // 追跡データのクリーンアップ
   private cleanupTrackedPeople() {
     const now = Date.now()
     let cleanupCount = 0
 
     for (const [id, person] of this.trackedPeople.entries()) {
-      // 一定時間検出されなかった人物を削除 - 時間を延長
-      if (now - person.lastSeen > 5000) {
-        // 5000msのまま
+      // 一定時間検出されなかった人物を削除 - 時間を短縮
+      if (now - person.lastSeen > 3000) {
+        // 5000msから3000msに短縮
         this.trackedPeople.delete(id)
         cleanupCount++
       }

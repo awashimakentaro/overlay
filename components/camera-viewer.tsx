@@ -98,7 +98,8 @@ export default function CameraViewer({
 
       peopleCounterRef.current = new PeopleCounter()
       peopleCounterRef.current.setCountUpdateCallback((count) => {
-        console.log(`カメラ ${id} のカウント更新:`, count)
+        console.log(`カメラ ${id} のカウント更新受信:`, count)
+        console.log(`詳細: 左→右=${count.leftToRight}, 右→左=${count.rightToLeft}, 合計=${count.total}`)
         setPeopleCount(count)
       })
       peopleCounterRef.current.setDebugMode(debugMode)
@@ -262,6 +263,11 @@ export default function CameraViewer({
     setIsCopied(true)
     setTimeout(() => setIsCopied(false), 2000)
   }
+
+  // peopleCountの変更を監視（デバッグ用）
+  useEffect(() => {
+    console.log(`カメラ ${id} の人数カウント状態更新:`, peopleCount)
+  }, [peopleCount, id])
 
   return (
     <motion.div
