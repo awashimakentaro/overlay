@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SmartphoneIcon, MonitorIcon, XIcon, PlusIcon, CameraIcon } from "lucide-react"
+import { SmartphoneIcon, MonitorIcon, XIcon, PlusIcon, CameraIcon, RefreshCwIcon } from "lucide-react"
 import CameraViewerSingle from "@/components/camera-viewer-single"
 import { motion } from "framer-motion"
 
@@ -13,6 +13,16 @@ import { motion } from "framer-motion"
 interface CameraInfo {
   id: string
   roomId: string
+}
+
+// ランダムなルームIDを生成する関数
+const generateRandomRoomId = (): string => {
+  const characters = "abcdefghijklmnopqrstuvwxyz0123456789"
+  let result = ""
+  for (let i = 0; i < 8; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length))
+  }
+  return result
 }
 
 export default function Home() {
@@ -23,7 +33,7 @@ export default function Home() {
   const [debugMode, setDebugMode] = useState(false)
   const [scriptsLoaded, setScriptsLoaded] = useState(false)
   const [isLoadingScripts, setIsLoadingScripts] = useState(false)
-  const [quality, setQuality] = useState("low") // デフォルトを"medium"から"low"に変更
+  const [quality, setQuality] = useState("ultralow")
 
   // 複数カメラ接続を管理するための状態（シンプルな配列）
   const [cameras, setCameras] = useState<CameraInfo[]>([])
@@ -33,10 +43,11 @@ export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
-  // ページロード時にデフォルトのルームIDを設定
+  // ページロード時にランダムなルームIDを生成
   useEffect(() => {
-    setRoomId("aizu")
-    setNewCameraRoomId("aizu")
+    const randomRoomId = generateRandomRoomId()
+    setRoomId(randomRoomId)
+    setNewCameraRoomId(randomRoomId)
   }, [])
 
   // 接続URLの生成
@@ -47,6 +58,13 @@ export default function Home() {
     navigator.clipboard.writeText(url)
     setIsCopied(true)
     setTimeout(() => setIsCopied(false), 2000)
+  }
+
+  // 新しいランダムルームIDを生成
+  const generateNewRoomId = () => {
+    const newRandomRoomId = generateRandomRoomId()
+    setRoomId(newRandomRoomId)
+    setNewCameraRoomId(newRandomRoomId)
   }
 
   // URLパラメータからモードとルームIDを取得
@@ -194,13 +212,24 @@ export default function Home() {
                       <Label htmlFor="camera-room-id" className="text-sm font-medium">
                         ルームID
                       </Label>
-                      <Input
-                        id="camera-room-id"
-                        value={roomId}
-                        onChange={(e) => setRoomId(e.target.value)}
-                        placeholder="ルームIDを入力"
-                        className="mt-1 bg-white/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-                      />
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          id="camera-room-id"
+                          value={roomId}
+                          onChange={(e) => setRoomId(e.target.value)}
+                          placeholder="ルームIDを入力"
+                          className="bg-white/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={generateNewRoomId}
+                          className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800"
+                          title="新しいランダムIDを生成"
+                        >
+                          <RefreshCwIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -330,13 +359,24 @@ export default function Home() {
                             <Label htmlFor="new-room-id" className="text-sm font-medium">
                               ルームID
                             </Label>
-                            <Input
-                              id="new-room-id"
-                              value={newCameraRoomId}
-                              onChange={(e) => setNewCameraRoomId(e.target.value)}
-                              placeholder="ルームIDを入力"
-                              className="mt-1 bg-white/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-                            />
+                            <div className="flex gap-2 mt-1">
+                              <Input
+                                id="new-room-id"
+                                value={newCameraRoomId}
+                                onChange={(e) => setNewCameraRoomId(e.target.value)}
+                                placeholder="ルームIDを入力"
+                                className="bg-white/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setNewCameraRoomId(generateRandomRoomId())}
+                                className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800"
+                                title="新しいランダムIDを生成"
+                              >
+                                <RefreshCwIcon className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                           <div className="flex items-end gap-2">
                             <Button
