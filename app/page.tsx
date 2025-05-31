@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SmartphoneIcon, MonitorIcon, XIcon, PlusIcon, CameraIcon } from "lucide-react"
-import CameraViewer from "@/components/camera-viewer"
+import CameraViewerSingle from "@/components/camera-viewer-single"
 import { motion } from "framer-motion"
 
 // カメラ接続情報の型定義
@@ -363,7 +363,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
                   >
-                    <CameraViewer
+                    <CameraViewerSingle
                       id={camera.id}
                       roomId={camera.roomId}
                       index={index}

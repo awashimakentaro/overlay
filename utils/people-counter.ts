@@ -240,7 +240,7 @@ export class PeopleCounter {
     ctx.beginPath()
     ctx.moveTo(this.crossingLine.x1, this.crossingLine.y1)
     ctx.lineTo(this.crossingLine.x2, this.crossingLine.y2)
-    ctx.strokeStyle = "rgba(255, 0, 0, 0.8)"
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.9)" // 不透明度を上げる
     ctx.lineWidth = 3
     ctx.stroke()
 
@@ -249,28 +249,28 @@ export class PeopleCounter {
     const midY = (this.crossingLine.y1 + this.crossingLine.y2) / 2
 
     // 左右方向の表示
-    ctx.fillStyle = "white"
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)" // 白色テキストの不透明度を上げる
     ctx.font = "14px Arial"
     ctx.fillText("左", this.crossingLine.x1 - 25, midY + 5)
     ctx.fillText("右", this.crossingLine.x2 + 10, midY + 5)
 
     // 左右の矢印
-    this.drawArrow(ctx, this.crossingLine.x1 - 5, midY, this.crossingLine.x1 - 20, midY, "white")
-    this.drawArrow(ctx, this.crossingLine.x2 + 5, midY, this.crossingLine.x2 + 20, midY, "white")
+    this.drawArrow(ctx, this.crossingLine.x1 - 5, midY, this.crossingLine.x1 - 20, midY, "rgba(255, 255, 255, 0.9)")
+    this.drawArrow(ctx, this.crossingLine.x2 + 5, midY, this.crossingLine.x2 + 20, midY, "rgba(255, 255, 255, 0.9)")
 
-    // カウント表示
-    ctx.fillStyle = "rgba(0, 255, 0, 0.8)"
+    // カウント表示の背景をより目立つように
+    ctx.fillStyle = "rgba(255, 165, 0, 0.9)" // 右→左カウントはオレンジ色
     ctx.fillRect(this.crossingLine.x1 - 40, this.crossingLine.y1 - 40, 35, 25)
     ctx.fillStyle = "black"
     ctx.fillText(`${this.peopleCount.rightToLeft}`, this.crossingLine.x1 - 30, this.crossingLine.y1 - 22)
 
-    ctx.fillStyle = "rgba(0, 255, 0, 0.8)"
+    ctx.fillStyle = "rgba(0, 255, 0, 0.9)" // 左→右カウントは緑色
     ctx.fillRect(this.crossingLine.x2 + 5, this.crossingLine.y2 - 40, 35, 25)
     ctx.fillStyle = "black"
     ctx.fillText(`${this.peopleCount.leftToRight}`, this.crossingLine.x2 + 15, this.crossingLine.y2 - 22)
 
     // 合計表示
-    ctx.fillStyle = "rgba(255, 255, 0, 0.8)"
+    ctx.fillStyle = "rgba(255, 255, 0, 0.9)"
     ctx.fillRect(midX - 20, midY - 40, 40, 25)
     ctx.fillStyle = "black"
     ctx.fillText(`${this.peopleCount.total}`, midX - 5, midY - 22)
@@ -455,24 +455,37 @@ export class PeopleCounter {
         person.hasEnteredRightSide = true
       }
 
+      // 前回の側を記録
+      const previousSide = person.lastSide
       person.lastSide = currentSide
 
       // 両側を経験した場合はカウント
       if (person.hasEnteredLeftSide && person.hasEnteredRightSide && !person.crossed) {
         person.crossed = true
 
-        // 最後の移動方向でカウント方向を決定
-        const direction = centerX > lastPosition.x ? "right" : "left"
-        person.direction = direction
-
-        if (direction === "right") {
+        // 前回の側と現在の側から方向を決定（より正確な方向判定）
+        let direction: string
+        if (previousSide === "left" && currentSide === "right") {
+          direction = "right" // 左から右への移動
           this.peopleCount.leftToRight++
           console.log(`左→右カウント: ${this.peopleCount.leftToRight}`)
-        } else {
+        } else if (previousSide === "right" && currentSide === "left") {
+          direction = "left" // 右から左への移動
           this.peopleCount.rightToLeft++
           console.log(`右→左カウント: ${this.peopleCount.rightToLeft}`)
+        } else {
+          // 不明な方向の場合は最後の移動から判断（フォールバック）
+          direction = centerX > lastPosition.x ? "right" : "left"
+          if (direction === "right") {
+            this.peopleCount.leftToRight++
+            console.log(`左→右カウント(フォールバック): ${this.peopleCount.leftToRight}`)
+          } else {
+            this.peopleCount.rightToLeft++
+            console.log(`右→左カウント(フォールバック): ${this.peopleCount.rightToLeft}`)
+          }
         }
 
+        person.direction = direction
         this.peopleCount.total = this.peopleCount.leftToRight + this.peopleCount.rightToLeft
 
         // 横断軌跡を描画
@@ -538,58 +551,40 @@ export class PeopleCounter {
     // バウンディングボックスを描画（横断済みかどうかで色を変える）
     ctx.strokeStyle = hasCrossed
       ? direction === "right"
-        ? "rgba(0, 255, 0, 0.8)"
-        : "rgba(255, 165, 0, 0.8)"
+        ? "rgba(0, 255, 0, 0.9)" // 緑色（左→右）
+        : "rgba(255, 165, 0, 0.9)" // オレンジ色（右→左）
       : currentSide === "left"
-        ? "rgba(0, 255, 255, 0.8)"
+        ? "rgba(0, 255, 255, 0.9)" // シアン（左側）
         : currentSide === "right"
-          ? "rgba(255, 0, 255, 0.8)"
-          : "rgba(128, 128, 128, 0.8)"
+          ? "rgba(255, 0, 255, 0.9)" // マゼンタ（右側）
+          : "rgba(255, 255, 255, 0.9)" // 白色（中央）
+
     ctx.lineWidth = 2
     ctx.strokeRect(x, y, width, height)
 
     // 中心点を描画
-    ctx.fillStyle = hasCrossed
-      ? direction === "right"
-        ? "rgba(0, 255, 0, 0.8)"
-        : "rgba(255, 165, 0, 0.8)"
-      : currentSide === "left"
-        ? "rgba(0, 255, 255, 0.8)"
-        : currentSide === "right"
-          ? "rgba(255, 0, 255, 0.8)"
-          : "rgba(128, 128, 128, 0.8)"
+    ctx.fillStyle = ctx.strokeStyle
     ctx.beginPath()
     ctx.arc(centerX, centerY, 4, 0, Math.PI * 2)
     ctx.fill()
 
     // 信頼度を表示
-    ctx.fillStyle = "white"
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)"
     ctx.font = "12px Arial"
-    ctx.fillText(`${Math.round(person.score * 100)}%`, x, y - 5)
 
-    // ID表示
-    const displayId = id ? id.substring(0, 6) : "新規"
-    ctx.fillText(`ID: ${displayId}`, x, y - 20)
+    // 信頼度テキストの背景を追加して読みやすくする
+    const scoreText = `${Math.round(person.score * 100)}%`
+    const textWidth = ctx.measureText(scoreText).width
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)"
+    ctx.fillRect(x, y - 20, textWidth + 10, 16)
 
-    // 現在の側を表示
-    if (currentSide) {
-      ctx.fillText(`側: ${currentSide}`, x, y - 35)
-    }
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)"
+    ctx.fillText(scoreText, x + 5, y - 8)
 
     // 横断情報を表示
     if (hasCrossed) {
-      ctx.fillStyle = direction === "right" ? "rgba(0, 255, 0, 0.8)" : "rgba(255, 165, 0, 0.8)"
+      ctx.fillStyle = direction === "right" ? "rgba(0, 255, 0, 0.9)" : "rgba(255, 165, 0, 0.9)"
       ctx.fillText(`${direction === "right" ? "→" : "←"}`, x + width - 15, y - 5)
-    }
-
-    // エリア経験状況を表示（デバッグモードのみ）
-    if (this.debugMode && trackedPerson) {
-      ctx.fillStyle = "yellow"
-      ctx.fillText(
-        `L:${trackedPerson.hasEnteredLeftSide ? "○" : "×"} R:${trackedPerson.hasEnteredRightSide ? "○" : "×"}`,
-        x,
-        y + height + 15,
-      )
     }
   }
 

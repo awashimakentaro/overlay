@@ -69,7 +69,7 @@ export default function PeopleCounterDisplay({ count, onReset, onToggleDebug, de
               key={count.leftToRight}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="text-2xl font-bold text-blue-600 dark:text-blue-400"
+              className="text-2xl font-bold text-green-600 dark:text-green-400"
             >
               {count.leftToRight}
             </motion.span>

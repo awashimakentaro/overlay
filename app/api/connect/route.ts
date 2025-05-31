@@ -251,6 +251,29 @@ export async function GET(request: NextRequest) {
             line-height: 15px;
           }
         }
+
+        /* オーバーレイモード用のスタイル */
+        .overlay-mode #status-bar,
+        .overlay-mode #control-panel,
+        .overlay-mode #performance-stats,
+        .overlay-mode #camera-info,
+        .overlay-mode #camera-controls,
+        .overlay-mode #quality-controls,
+        .overlay-mode .connection-indicator {
+          display: none !important;
+        }
+
+        .overlay-mode #video-container {
+          height: 100vh !important;
+          max-height: 100vh !important;
+        }
+
+        .overlay-mode #local-video,
+        .overlay-mode #remote-image {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: contain !important;
+        }
       </style>
     </head>
     <body>
@@ -1230,15 +1253,25 @@ export async function GET(request: NextRequest) {
         
         // 親ウィンドウからのメッセージを受信
         window.addEventListener('message', (event) => {
-          // オリジン制限を緩和
-          // if (event.origin === window.location.origin) {
-            // 品質設定の変更
-            if (event.data && event.data.type === 'quality-change') {
-              log('親ウィンドウから品質設定変更: ' + event.data.quality);
-              qualitySelect.value = event.data.quality;
-              qualitySelect.dispatchEvent(new Event('change'));
+          // オーバーレイモードの切り替え
+          if (event.data && event.data.type === 'toggle-overlay-mode') {
+            log('オーバーレイモード切り替え: ' + event.data.enabled);
+            
+            if (event.data.enabled) {
+              document.body.classList.add('overlay-mode');
+              log('オーバーレイモードを有効にしました');
+            } else {
+              document.body.classList.remove('overlay-mode');
+              log('オーバーレイモードを無効にしました');
             }
-          // }
+          }
+          
+          // 品質設定の変更（既存のコード）
+          if (event.data && event.data.type === 'quality-change') {
+            log('親ウィンドウから品質設定変更: ' + event.data.quality);
+            qualitySelect.value = event.data.quality;
+            qualitySelect.dispatchEvent(new Event('change'));
+          }
         });
       </script>
     </body>
