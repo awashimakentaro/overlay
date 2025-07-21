@@ -300,8 +300,8 @@ export async function GET(request: NextRequest) {
           <select id="quality-select">
             <option value="high">高画質 (低FPS)</option>
             <option value="medium">標準 (中FPS)</option>
-            <option value="low" selected>低画質 (高FPS)</option>
-            <option value="ultralow">超低画質 (最高FPS)</option>
+            <option value="low">低画質 (高FPS)</option>
+            <option value="ultralow" selected>超低画質 (最高FPS)</option>
           </select>
         </div>
         
@@ -978,7 +978,7 @@ export async function GET(request: NextRequest) {
               // 品質設定の変更を送信
               connection.send({ 
                 type: 'quality-change', 
-                quality: 'medium' // デフォルトは中品質
+                quality: 'ultralow' // デフォルトを"medium"から"ultralow"に変更
               });
               
               // 定期的にpingを送信
@@ -1113,7 +1113,7 @@ export async function GET(request: NextRequest) {
         const browserCompat = checkBrowserCompatibility();
         if (!browserCompat.isCompatible) {
           log('警告: このブラウザはWebRTCとの完全な互換性がありません');
-          updateStatus('警告: ブラウザの互換性に問題があります - ' + browserCompat.issues.join(', '));
+          updateStatus('���告: ブラウザの互換性に問題があります - ' + browserCompat.issues.join(', '));
         }
         
         // カメラモードの場合はカメラを起動
